@@ -27,6 +27,10 @@ jobs:
         env:
           RCLONE_CONFIG: ${{ secrets.RCLONE_CONFIG }}
 
+      - name: Configure git remote to use PAT for pushes
+        run: |
+          git remote set-url origin https://x-access-token:${{ secrets.REPO_PAT }}@github.com/${{ github.repository }}.git
+
       - name: Run batch conversion
         run: |
           chmod +x scripts/process.sh
