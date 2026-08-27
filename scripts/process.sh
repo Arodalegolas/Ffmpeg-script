@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-set -uo pipefail
+set -euo pipefail
+IFS=$'\n\t'
 
 SRC="gdrive,root_folder_id=1hDOvcHyZjFpUIzeRfYl3pdjna8ikG0I_:"
 DST="gdrive,root_folder_id=1iaVsGBe5Pnd41SGzPbNqh-e8suH77UMt:"
 PROGRESS_FILE="progress.log"
 WORK_DIR="work"
-MAX_SECONDS=19800   # \~5.5 horas de margen de seguridad
+MAX_SECONDS=19800   # ~5.5 horas de margen de seguridad
 
 mkdir -p "$WORK_DIR"
 touch "$PROGRESS_FILE"
@@ -16,9 +17,13 @@ git config user.name "github-actions[bot]"
 git config user.email "github-actions[bot]@users.noreply.github.com"
 
 echo "Listando archivos de origen..."
-rclone lsf "$SRC" --files-only | sort > all_files.txt
+# Listar recursivamente, solo archivos, mantener rutas relativas
+rclone lsf --recursive --files-only "$SRC" | sort > all_files.txt
 
-while IFS= read -r file; do
+while IFS= read -r file || [ -n "${file:-}" ]; do
+    # Ignorar líneas vacías
+    [ -z "$file" ] && continue
+
     if grep -Fxq "$file" "$PROGRESS_FILE"; then
         continue
     fi
@@ -33,13 +38,16 @@ while IFS= read -r file; do
     in_path="$WORK_DIR/$file"
     out_path="$WORK_DIR/out_$file"
 
-    if ! rclone copyto "\( {SRC} \){file}" "$in_path"; then
+    mkdir -p "$(dirname "$in_path")" "$(dirname "$out_path")"
+
+    if ! rclone copyto "${SRC}${file}" "$in_path"; then
         echo "Falló la descarga de $file, se omite."
         rm -f "$in_path"
         continue
     fi
 
-    if ! ffmpeg -y -i "$in_path" -vf "scale=640:-2" \
+    # No forzar upscaling: si el ancho es menor, se mantiene
+    if ! ffmpeg -y -i "$in_path" -vf "scale='min(640,iw)':'-2'" \
         -c:v libx264 -preset medium -b:v 301k -maxrate 301k -bufsize 602k \
         -c:a aac -b:a 48k -movflags +faststart "$out_path"; then
         echo "Falló la conversión de $file, se omite."
@@ -47,7 +55,7 @@ while IFS= read -r file; do
         continue
     fi
 
-    if ! rclone copyto "\( out_path" " \){DST}${file}"; then
+    if ! rclone copyto "$out_path" "${DST}${file}"; then
         echo "Falló la subida de $file, se reintentará en la próxima corrida."
         rm -f "$in_path" "$out_path"
         continue
@@ -57,7 +65,7 @@ while IFS= read -r file; do
 
     echo "$file" >> "$PROGRESS_FILE"
     git add "$PROGRESS_FILE"
-    git commit -m "Progreso: procesado $file" || echo "⚠️ Falló el commit de $file"
+    git commit -m "fix: corregir process.sh — rclone/ffmpeg y robustez" || echo "⚠️ Falló el commit de $file"
     git push || echo "⚠️ Falló el push de $file"
 
     echo "Listo: $file"
