@@ -1,0 +1,33 @@
+name: FFmpeg Batch Conversion
+
+on:
+  workflow_dispatch:
+
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Install rclone
+        run: |
+          curl https://rclone.org/install.sh | sudo bash
+
+      - name: Set up rclone config
+        run: |
+          mkdir -p \~/.config/rclone
+          echo "$RCLONE_CONFIG" > \~/.config/rclone/rclone.conf
+        env:
+          RCLONE_CONFIG: ${{ secrets.RCLONE_CONFIG }}
+
+      - name: Run batch conversion
+        run: |
+          chmod +x scripts/process.sh
+          ./scripts/process.sh
