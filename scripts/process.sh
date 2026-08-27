@@ -31,7 +31,12 @@ echo "Listando archivos de origen..."
 # Recursivo, solo archivos, rutas relativas, orden alfabético
 rclone lsf --recursive --files-only "$SRC" | sort > all_files.txt
 
-while IFS= read -r file || [ -n "${file:-}" ]; do
+# Cargar la lista en un array en vez de "done < all_files.txt": así el bucle
+# no depende de stdin, y comandos como ffmpeg (que por defecto también lee
+# de stdin) no pueden "comerse" el resto de la lista y cortar el bucle.
+mapfile -t FILES < all_files.txt
+
+for file in "${FILES[@]}"; do
     [ -z "$file" ] && continue
 
     if grep -Fxq "$file" "$PROGRESS_FILE"; then
@@ -50,22 +55,23 @@ while IFS= read -r file || [ -n "${file:-}" ]; do
 
     mkdir -p "$(dirname "$in_path")" "$(dirname "$out_path")"
 
-    if ! rclone copyto "${SRC}${file}" "$in_path"; then
+    if ! rclone copyto "${SRC}${file}" "$in_path" </dev/null; then
         echo "Falló la descarga de $file, se omite."
         rm -f "$in_path"
         continue
     fi
 
-    # No forzar upscaling: si el ancho original es menor a 640, se mantiene
-    if ! ffmpeg -y -i "$in_path" -vf "scale='min(640,iw)':'-2'" \
+    # -nostdin: evita que ffmpeg intente leer de stdin y se coma el resto del bucle.
+    # No forzar upscaling: si el ancho original es menor a 640, se mantiene.
+    if ! ffmpeg -nostdin -y -i "$in_path" -vf "scale='min(640,iw)':'-2'" \
         -c:v libx264 -preset medium -b:v 301k -maxrate 301k -bufsize 602k \
-        -c:a aac -b:a 48k -movflags +faststart "$out_path"; then
+        -c:a aac -b:a 48k -movflags +faststart "$out_path" </dev/null; then
         echo "Falló la conversión de $file, se omite."
         rm -f "$in_path" "$out_path"
         continue
     fi
 
-    if ! rclone copyto "$out_path" "${DST}${file}"; then
+    if ! rclone copyto "$out_path" "${DST}${file}" </dev/null; then
         echo "Falló la subida de $file, se reintentará en la próxima corrida."
         rm -f "$in_path" "$out_path"
         continue
@@ -77,6 +83,6 @@ while IFS= read -r file || [ -n "${file:-}" ]; do
     upload_progress
 
     echo "Listo: $file"
-done < all_files.txt
+done
 
 echo "Corrida finalizada."
