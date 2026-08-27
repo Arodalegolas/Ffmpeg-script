@@ -47,10 +47,11 @@ while IFS= read -r file; do
         continue
     fi
 
-    if ! rclone copyto "\( {SRC} \){file}" "$in_path"; then
+    if ! rclone copyto "\( out_path" " \){DST}${file}"; then
         echo "Falló la subida de $file, se reintentará en la próxima corrida."
         rm -f "$in_path" "$out_path"
         continue
+    fi
     fi
 
     rm -f "$in_path" "$out_path"
