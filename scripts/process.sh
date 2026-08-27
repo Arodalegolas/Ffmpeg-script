@@ -52,7 +52,6 @@ while IFS= read -r file; do
         rm -f "$in_path" "$out_path"
         continue
     fi
-    fi
 
     rm -f "$in_path" "$out_path"
 
