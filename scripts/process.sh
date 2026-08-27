@@ -5,7 +5,7 @@ SRC="gdrive,root_folder_id=1hDOvcHyZjFpUIzeRfYl3pdjna8ikG0I_:"
 DST="gdrive,root_folder_id=1iaVsGBe5Pnd41SGzPbNqh-e8suH77UMt:"
 PROGRESS_FILE="progress.log"
 WORK_DIR="work"
-MAX_SECONDS=19800   # ~5.5 horas de margen de seguridad
+MAX_SECONDS=19800   # \~5.5 horas de margen de seguridad
 
 mkdir -p "$WORK_DIR"
 touch "$PROGRESS_FILE"
@@ -33,7 +33,7 @@ while IFS= read -r file; do
     in_path="$WORK_DIR/$file"
     out_path="$WORK_DIR/out_$file"
 
-    if ! rclone copyto "${SRC}${file}" "$in_path"; then
+    if ! rclone copyto "\( {SRC} \){file}" "$in_path"; then
         echo "Falló la descarga de $file, se omite."
         rm -f "$in_path"
         continue
@@ -47,7 +47,7 @@ while IFS= read -r file; do
         continue
     fi
 
-    if ! rclone copyto "$out_path" "${DST}${file}"; then
+    if ! rclone copyto "\( out_path" " \){DST}${file}"; then
         echo "Falló la subida de $file, se reintentará en la próxima corrida."
         rm -f "$in_path" "$out_path"
         continue
@@ -57,8 +57,8 @@ while IFS= read -r file; do
 
     echo "$file" >> "$PROGRESS_FILE"
     git add "$PROGRESS_FILE"
-    git commit -m "Progreso: procesado $file" >/dev/null 2>&1
-    git push >/dev/null 2>&1
+    git commit -m "Progreso: procesado $file" || echo "⚠️ Falló el commit de $file"
+    git push || echo "⚠️ Falló el push de $file"
 
     echo "Listo: $file"
 done < all_files.txt
