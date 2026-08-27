@@ -1,9 +1,7 @@
 name: FFmpeg Batch Conversion
 
 on:
-  workflow_dispatch:   # Se ejecuta manualmente desde la pestaña Actions
-  # push:
-  #   branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   convert:
