@@ -3,9 +3,14 @@ name: FFmpeg Batch Conversion
 on:
   workflow_dispatch:
 
+concurrency:
+  group: ffmpeg-batch-convert
+  cancel-in-progress: false
+
 jobs:
   convert:
     runs-on: ubuntu-latest
+    timeout-minutes: 355
 
     steps:
       - name: Checkout repository
@@ -22,8 +27,8 @@ jobs:
 
       - name: Set up rclone config
         run: |
-          mkdir -p $HOME/.config/rclone
-          echo "$RCLONE_CONFIG" > $HOME/.config/rclone/rclone.conf
+          mkdir -p "$HOME/.config/rclone"
+          printf '%s' "$RCLONE_CONFIG" > "$HOME/.config/rclone/rclone.conf"
         env:
           RCLONE_CONFIG: ${{ secrets.RCLONE_CONFIG }}
 
