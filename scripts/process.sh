@@ -4,42 +4,40 @@ IFS=$'\n\t'
 
 SRC="gdrive,root_folder_id=1hDOvcHyZjFpUIzeRfYl3pdjna8ikG0I_:"
 DST="gdrive,root_folder_id=1iaVsGBe5Pnd41SGzPbNqh-e8suH77UMt:"
-PROGRESS_FILE="progress.log"
 WORK_DIR="work"
-MAX_SECONDS=19800   # ~5.5 horas de margen de seguridad
+MAX_SECONDS=19800    # ~5.5 horas de margen de seguridad
+MIN_VALID_BYTES=5000000   # 5 MB: por debajo de esto, se considera archivo corrupto/incompleto
 
 mkdir -p "$WORK_DIR"
 start_time=$SECONDS
 
-# --- Descargar progress.log remoto si existe (fuente de verdad: Drive, no git) ---
-if rclone lsjson "${DST}progress.log" >/dev/null 2>&1; then
-    rclone copyto "${DST}progress.log" "$PROGRESS_FILE"
-else
-    touch "$PROGRESS_FILE"
-fi
-
-# --- Subida segura del progreso (tmp + renombrado remoto, evita archivo a medio escribir) ---
-upload_progress() {
-    cp "$PROGRESS_FILE" "${PROGRESS_FILE}.tmp"
-    rclone copyto "${PROGRESS_FILE}.tmp" "${DST}progress.log.tmp"
-    rclone moveto "${DST}progress.log.tmp" "${DST}progress.log"
-    rm -f "${PROGRESS_FILE}.tmp"
-}
-trap upload_progress EXIT
-
 echo "Listando archivos de origen..."
-# Recursivo, solo archivos, rutas relativas, orden alfabético
 rclone lsf --recursive --files-only "$SRC" | sort > all_files.txt
 
-# Cargar la lista en un array en vez de "done < all_files.txt": así el bucle
-# no depende de stdin, y comandos como ffmpeg (que por defecto también lee
-# de stdin) no pueden "comerse" el resto de la lista y cortar el bucle.
+echo "Consultando estado real del destino (sin progress.log, sin fantasmas)..."
+# name<TAB>size de cada archivo YA presente en destino
+rclone lsjson --recursive "$DST" 2>/dev/null \
+    | python3 -c "
+import json, sys
+for item in json.load(sys.stdin):
+    if not item.get('IsDir'):
+        print(f\"{item['Path']}\t{item['Size']}\")
+" > dest_status.tsv 2>/dev/null || true
+
+is_already_done() {
+    local file="$1"
+    local size
+    size=$(awk -F'\t' -v f="$file" '$1==f{print $2}' dest_status.tsv)
+    [ -n "$size" ] && [ "$size" -ge "$MIN_VALID_BYTES" ]
+}
+
 mapfile -t FILES < all_files.txt
 
 for file in "${FILES[@]}"; do
     [ -z "$file" ] && continue
 
-    if grep -Fxq "$file" "$PROGRESS_FILE"; then
+    if is_already_done "$file"; then
+        echo "Ya existe en destino con tamaño válido, se omite: $file"
         continue
     fi
 
@@ -78,9 +76,6 @@ for file in "${FILES[@]}"; do
     fi
 
     rm -f "$in_path" "$out_path"
-
-    echo "$file" >> "$PROGRESS_FILE"
-    upload_progress
 
     echo "Listo: $file"
 done
